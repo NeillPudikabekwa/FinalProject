@@ -15,9 +15,14 @@ import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.database.*;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.text.DateFormat;
 import java.util.Date;
 import java.util.Locale;
+import org.json.JSONObject;
 
 public class MainActivity extends Activity {
     private static final String PROJECT_ID = "gaslpg-54c74";
@@ -26,16 +31,24 @@ public class MainActivity extends Activity {
     private static final String API_KEY = "AIzaSyA-XkLCV2-NS7zyJwz3IGBuuJg8qCcpv_0";
     private static final String SENDER_ID = "859259164362";
 
-    private TextView connectionView, statusView, rawView, deviceView, sensorView, updateView, buzzerView, debugView;
+    private TextView connectionView, statusView, rawView, deviceView, sensorView, updateView, buzzerView, baselineView, voltageView, stageView, debugView;
     private LinearLayout statusCard;
     private DatabaseReference currentRef;
     private String lastStatus = "";
+    private final Handler liveHandler = new Handler(Looper.getMainLooper());
+    private final Runnable livePoll = new Runnable() {
+        @Override public void run() {
+            pollLatestRest();
+            liveHandler.postDelayed(this, 1500);
+        }
+    };
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         createUi();
         requestNotificationPermission();
         initialiseFirebase();
+        startRestPolling();
         startMonitorService();
     }
 
@@ -90,11 +103,20 @@ public class MainActivity extends Activity {
         info.addView(text("DEVICE INFORMATION", 14, true, Color.rgb(95,117,140)));
         sensorView = text("Sensor: --", 17, false, Color.rgb(11,31,51));
         deviceView = text("Device: --", 17, false, Color.rgb(11,31,51));
-        updateView = text("Last update: --", 15, false, Color.rgb(60,80,102));
+        baselineView = text("Baseline: -- ADC", 16, false, Color.rgb(11,31,51));
+        voltageView = text("Sensor voltage: -- V", 16, false, Color.rgb(11,31,51));
+        stageView = text("Firebase stage: --", 16, false, Color.rgb(11,31,51));
+        updateView = text("Device sample time: --", 15, false, Color.rgb(60,80,102));
         sensorView.setPadding(0, dp(12), 0, dp(7));
         deviceView.setPadding(0, 0, 0, dp(7));
+        baselineView.setPadding(0, 0, 0, dp(7));
+        voltageView.setPadding(0, 0, 0, dp(7));
+        stageView.setPadding(0, 0, 0, dp(7));
         info.addView(sensorView);
         info.addView(deviceView);
+        info.addView(baselineView);
+        info.addView(voltageView);
+        info.addView(stageView);
         info.addView(updateView);
         root.addView(info);
 
@@ -108,7 +130,7 @@ public class MainActivity extends Activity {
 
         LinearLayout diag = section();
         diag.addView(text("CONNECTION DIAGNOSTICS", 14, true, Color.rgb(95,117,140)));
-        debugView = text("Project: " + PROJECT_ID + "\nPath: /gasMonitor/current", 13, false, Color.rgb(60,80,102));
+        debugView = text("Project: " + PROJECT_ID + "\nLive path: /latest", 13, false, Color.rgb(60,80,102));
         debugView.setPadding(0, dp(10), 0, 0);
         diag.addView(debugView);
         root.addView(diag);
@@ -211,14 +233,20 @@ public class MainActivity extends Activity {
         if (device.isEmpty()) device = "Unknown";
         if (ts > 0 && ts < 100000000000L) ts *= 1000L;
 
+        long baseline = parseLong(snapshot.child("adc_baseline").getValue(), -1);
+        if (baseline < 0) baseline = parseLong(snapshot.child("response_demo_baseline_adc").getValue(), -1);
+        double voltage = parseDouble(snapshot.child("sensor_voltage_v_estimate").getValue(), -1);
+        if (voltage < 0) voltage = parseDouble(snapshot.child("sensor_voltage_v").getValue(), -1);
+        String stage = value(snapshot.child("stage").getValue());
+
         String status = classify(raw);
-        updateUi(status, raw, sensor, device, ts);
+        updateUi(status, raw, sensor, device, ts, baseline, voltage, stage);
         showConnectionMessage(sourceLabel, Color.rgb(25,135,84));
         debugView.setText(
-                "Snapshot received from /gasMonitor/current" +
-                "\nFirebase status field: " + value(snapshot.child("status").getValue()) +
+                "Live snapshot received from /latest" +
                 "\nApp status from ADC: " + status +
-                "\nFields in snapshot: " + snapshot.getChildrenCount()
+                "\nFirebase stage: " + stage +
+                "\nUpdate mode: Firebase listener + internet polling"
         );
     }
 
@@ -229,12 +257,15 @@ public class MainActivity extends Activity {
         return "DANGER";
     }
 
-    private void updateUi(String status, long raw, String sensor, String device, long ts) {
+    private void updateUi(String status, long raw, String sensor, String device, long ts, long baseline, double voltage, String stage) {
         statusView.setText(status);
         rawView.setText(raw >= 0 ? "ADC reading: " + raw : "ADC reading: --");
         sensorView.setText("Sensor: " + sensor);
         deviceView.setText("Device: " + device);
-        updateView.setText("Last update: " + DateFormat.getDateTimeInstance(
+        baselineView.setText(baseline >= 0 ? "Baseline: " + baseline + " ADC" : "Baseline: -- ADC");
+        voltageView.setText(voltage >= 0 ? String.format(Locale.US, "Sensor voltage: %.3f V", voltage) : "Sensor voltage: -- V");
+        stageView.setText(stage == null || stage.isEmpty() ? "Firebase stage: --" : "Firebase stage: " + stage);
+        updateView.setText("Device sample time: " + DateFormat.getDateTimeInstance(
                 DateFormat.MEDIUM, DateFormat.MEDIUM).format(new Date(ts)));
 
         int bg, border, fg;
@@ -272,6 +303,106 @@ public class MainActivity extends Activity {
             if (!isFinishing()) showSafetyDialog();
         }
         lastStatus = status;
+    }
+
+    private void startRestPolling() {
+        liveHandler.removeCallbacks(livePoll);
+        liveHandler.post(livePoll);
+    }
+
+    private void pollLatestRest() {
+        new Thread(() -> {
+            HttpURLConnection conn = null;
+            try {
+                URL url = new URL(DATABASE_URL + "/latest.json");
+                conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
+                conn.setUseCaches(false);
+                conn.setRequestMethod("GET");
+                int code = conn.getResponseCode();
+                if (code != 200) {
+                    final int http = code;
+                    runOnUiThread(() -> {
+                        showConnectionMessage("INTERNET READ ERROR " + http, Color.rgb(205,42,45));
+                        debugView.setText("REST /latest returned HTTP " + http);
+                    });
+                    return;
+                }
+                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                StringBuilder body = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) body.append(line);
+                br.close();
+                JSONObject j = new JSONObject(body.toString());
+                runOnUiThread(() -> applyJson(j));
+            } catch (Exception e) {
+                final String msg = e.getClass().getSimpleName() + ": " + e.getMessage();
+                runOnUiThread(() -> {
+                    showConnectionMessage("NO INTERNET / RETRYING", Color.rgb(205,42,45));
+                    debugView.setText("Internet refresh failed: " + msg + "\nPath: /latest");
+                });
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        }).start();
+    }
+
+    private void applyJson(JSONObject j) {
+        long raw = jsonLong(j, "adc_raw", -1);
+        if (raw < 0) raw = jsonLong(j, "value", -1);
+        if (raw < 0) raw = jsonLong(j, "rawValue", -1);
+
+        String sensor = jsonString(j, "sensor_model");
+        if (sensor.isEmpty()) sensor = jsonString(j, "sensor");
+        String device = jsonString(j, "device_id");
+        if (device.isEmpty()) device = jsonString(j, "device");
+
+        long ts = jsonLong(j, "timestamp_ms", System.currentTimeMillis());
+        if (ts > 0 && ts < 100000000000L) ts *= 1000L;
+
+        long baseline = jsonLong(j, "adc_baseline", -1);
+        if (baseline < 0) baseline = jsonLong(j, "response_demo_baseline_adc", -1);
+
+        double voltage = jsonDouble(j, "sensor_voltage_v_estimate", -1);
+        if (voltage < 0) voltage = jsonDouble(j, "sensor_voltage_v", -1);
+
+        String stage = jsonString(j, "stage");
+        String status = classify(raw);
+        updateUi(status, raw, sensor.isEmpty() ? "Unknown" : sensor,
+                device.isEmpty() ? "Unknown" : device, ts, baseline, voltage, stage);
+        showConnectionMessage("LIVE • INTERNET + FIREBASE", Color.rgb(25,135,84));
+        debugView.setText("Live /latest refresh received" +
+                "\nApp status from ADC: " + status +
+                "\nFirebase stage: " + stage +
+                "\nAuto refresh: 1.5 seconds");
+    }
+
+    private long jsonLong(JSONObject j, String key, long fallback) {
+        try { return j.has(key) && !j.isNull(key) ? j.getLong(key) : fallback; }
+        catch (Exception e) { return fallback; }
+    }
+
+    private double jsonDouble(JSONObject j, String key, double fallback) {
+        try { return j.has(key) && !j.isNull(key) ? j.getDouble(key) : fallback; }
+        catch (Exception e) { return fallback; }
+    }
+
+    private String jsonString(JSONObject j, String key) {
+        try { return j.has(key) && !j.isNull(key) ? String.valueOf(j.get(key)).trim() : ""; }
+        catch (Exception e) { return ""; }
+    }
+
+    private double parseDouble(Object obj, double fallback) {
+        if (obj == null) return fallback;
+        if (obj instanceof Number) return ((Number)obj).doubleValue();
+        try { return Double.parseDouble(String.valueOf(obj).trim()); }
+        catch (Exception e) { return fallback; }
+    }
+
+    @Override protected void onDestroy() {
+        liveHandler.removeCallbacks(livePoll);
+        super.onDestroy();
     }
 
     private long parseLong(Object obj, long fallback) {
