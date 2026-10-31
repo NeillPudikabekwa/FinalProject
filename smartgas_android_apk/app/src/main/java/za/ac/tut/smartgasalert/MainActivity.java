@@ -30,6 +30,7 @@ public class MainActivity extends Activity {
     private static final String APP_ID = "1:859259164362:android:3011bb9ff108a446f44633";
     private static final String API_KEY = "AIzaSyA-XkLCV2-NS7zyJwz3IGBuuJg8qCcpv_0";
     private static final String SENDER_ID = "859259164362";
+    private static final String LIVE_PATH = "households/home/devices/arduino-uno-usb/latest";
 
     private TextView connectionView, statusView, rawView, deviceView, sensorView, updateView, buzzerView, baselineView, voltageView, stageView, debugView;
     private LinearLayout statusCard;
@@ -130,7 +131,7 @@ public class MainActivity extends Activity {
 
         LinearLayout diag = section();
         diag.addView(text("CONNECTION DIAGNOSTICS", 14, true, Color.rgb(95,117,140)));
-        debugView = text("Project: " + PROJECT_ID + "\nLive path: /latest", 13, false, Color.rgb(60,80,102));
+        debugView = text("Project: " + PROJECT_ID + "\nLive path: /" + LIVE_PATH, 13, false, Color.rgb(60,80,102));
         debugView.setPadding(0, dp(10), 0, 0);
         diag.addView(debugView);
         root.addView(diag);
@@ -161,13 +162,13 @@ public class MainActivity extends Activity {
             if (app == null) throw new IllegalStateException("Firebase initialization returned null");
 
             FirebaseDatabase database = FirebaseDatabase.getInstance(app);
-            currentRef = database.getReference("latest");
+            currentRef = database.getReference(LIVE_PATH);
 
             currentRef.addValueEventListener(new ValueEventListener() {
                 @Override public void onDataChange(DataSnapshot snapshot) {
                     if (!snapshot.exists()) {
                         showConnectionMessage("FIREBASE CONNECTED • NO CURRENT DATA", Color.rgb(214,157,0));
-                        debugView.setText("Connected successfully, but /latest is empty.");
+                        debugView.setText("Connected successfully, but /households/home/devices/arduino-uno-usb/latest is empty.");
                         return;
                     }
                     applySnapshot(snapshot, "LIVE FIREBASE");
@@ -206,7 +207,7 @@ public class MainActivity extends Activity {
                     if (snapshot.exists()) applySnapshot(snapshot, "LIVE FIREBASE • REFRESHED");
                     else {
                         showConnectionMessage("FIREBASE CONNECTED • NO CURRENT DATA", Color.rgb(214,157,0));
-                        debugView.setText("No data exists at /latest.");
+                        debugView.setText("No data exists at /households/home/devices/arduino-uno-usb/latest.");
                     }
                 })
                 .addOnFailureListener(e -> {
@@ -243,7 +244,7 @@ public class MainActivity extends Activity {
         updateUi(status, raw, sensor, device, ts, baseline, voltage, stage);
         showConnectionMessage(sourceLabel, Color.rgb(25,135,84));
         debugView.setText(
-                "Live snapshot received from /latest" +
+                "Live snapshot received from /households/home/devices/arduino-uno-usb/latest" +
                 "\nApp status from ADC: " + status +
                 "\nFirebase stage: " + stage +
                 "\nUpdate mode: Firebase listener + internet polling"
@@ -314,7 +315,7 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             HttpURLConnection conn = null;
             try {
-                URL url = new URL(DATABASE_URL + "/latest.json");
+                URL url = new URL(DATABASE_URL + "/households/home/devices/arduino-uno-usb/latest.json");
                 conn = (HttpURLConnection) url.openConnection();
                 conn.setConnectTimeout(5000);
                 conn.setReadTimeout(5000);
@@ -325,7 +326,7 @@ public class MainActivity extends Activity {
                     final int http = code;
                     runOnUiThread(() -> {
                         showConnectionMessage("INTERNET READ ERROR " + http, Color.rgb(205,42,45));
-                        debugView.setText("REST /latest returned HTTP " + http);
+                        debugView.setText("REST /households/home/devices/arduino-uno-usb/latest returned HTTP " + http);
                     });
                     return;
                 }
@@ -340,7 +341,7 @@ public class MainActivity extends Activity {
                 final String msg = e.getClass().getSimpleName() + ": " + e.getMessage();
                 runOnUiThread(() -> {
                     showConnectionMessage("NO INTERNET / RETRYING", Color.rgb(205,42,45));
-                    debugView.setText("Internet refresh failed: " + msg + "\nPath: /latest");
+                    debugView.setText("Internet refresh failed: " + msg + "\nPath: /households/home/devices/arduino-uno-usb/latest");
                 });
             } finally {
                 if (conn != null) conn.disconnect();
@@ -372,7 +373,7 @@ public class MainActivity extends Activity {
         updateUi(status, raw, sensor.isEmpty() ? "Unknown" : sensor,
                 device.isEmpty() ? "Unknown" : device, ts, baseline, voltage, stage);
         showConnectionMessage("LIVE • INTERNET + FIREBASE", Color.rgb(25,135,84));
-        debugView.setText("Live /latest refresh received" +
+        debugView.setText("Live /households/home/devices/arduino-uno-usb/latest refresh received" +
                 "\nApp status from ADC: " + status +
                 "\nFirebase stage: " + stage +
                 "\nAuto refresh: 1.5 seconds");
