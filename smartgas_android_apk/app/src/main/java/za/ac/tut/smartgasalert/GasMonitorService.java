@@ -49,13 +49,13 @@ public class GasMonitorService extends Service {
             }
 
             currentRef = FirebaseDatabase.getInstance(app)
-                    .getReference("gasMonitor").child("current");
+                    .getReference("latest");
 
             listener = new ValueEventListener() {
                 @Override public void onDataChange(DataSnapshot snapshot) {
-                    long raw = parseLong(snapshot.child("rawValue").getValue(), -1);
-                    if (raw < 0) raw = parseLong(snapshot.child("adc").getValue(), -1);
+                    long raw = parseLong(snapshot.child("adc_raw").getValue(), -1);
                     if (raw < 0) raw = parseLong(snapshot.child("value").getValue(), -1);
+                    if (raw < 0) raw = parseLong(snapshot.child("rawValue").getValue(), -1);
 
                     String status = classify(raw);
                     if ("DANGER".equals(status) && !"DANGER".equals(lastStatus)) {
