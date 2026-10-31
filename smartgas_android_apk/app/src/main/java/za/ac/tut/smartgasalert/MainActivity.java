@@ -299,8 +299,10 @@ public class MainActivity extends Activity {
         statusCard.setBackground(roundRect(bg, 22, border));
         statusView.setTextColor(fg);
 
+        if ("WARNING".equals(status) && !"WARNING".equals(lastStatus)) {
+            if (!isFinishing()) showWarningDialog((int) raw);
+        }
         if ("DANGER".equals(status) && !"DANGER".equals(lastStatus)) {
-            GasMonitorService.postDangerNotification(this, (int)raw);
             if (!isFinishing()) showSafetyDialog();
         }
         lastStatus = status;
@@ -420,6 +422,18 @@ public class MainActivity extends Activity {
     private void showConnectionMessage(String message, int color) {
         connectionView.setText(message);
         connectionView.setBackground(roundRect(color, 20, Color.TRANSPARENT));
+    }
+
+    private void showWarningDialog(int raw) {
+        new AlertDialog.Builder(this)
+                .setTitle("WARNING — Elevated gas response")
+                .setMessage("ADC reading: " + raw + "\n\n" +
+                        "The sensor is in the WARNING range (110–650 ADC). " +
+                        "The buzzer remains OFF at this stage. Monitor the reading and check the area safely. " +
+                        "If the reading reaches 651 ADC or higher, the app will switch to DANGER.\n\n" +
+                        "Note: this is a raw ADC alert band, not a calibrated gas concentration.")
+                .setPositiveButton("OK", null)
+                .show();
     }
 
     private void showSafetyDialog() {
