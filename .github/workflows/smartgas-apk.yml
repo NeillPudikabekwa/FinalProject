@@ -12,6 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check live Firebase current reading
+        run: |
+          echo "Checking https://gaslpg-54c74-default-rtdb.firebaseio.com/gasMonitor/current.json"
+          curl -sS -w "\nHTTP_CODE:%{http_code}\n" "https://gaslpg-54c74-default-rtdb.firebaseio.com/gasMonitor/current.json"
+
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
