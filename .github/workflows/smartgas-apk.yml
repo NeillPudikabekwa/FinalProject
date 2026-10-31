@@ -14,8 +14,23 @@ jobs:
 
       - name: Check live Firebase current reading
         run: |
-          echo "Checking https://gaslpg-54c74-default-rtdb.firebaseio.com/gasMonitor/current.json"
+          echo "Unauthenticated read:"
           curl -sS -w "\nHTTP_CODE:%{http_code}\n" "https://gaslpg-54c74-default-rtdb.firebaseio.com/gasMonitor/current.json"
+
+      - name: Check anonymous Firebase Authentication
+        shell: bash
+        run: |
+          set -e
+          RESP=$(curl -sS -X POST             -H "Content-Type: application/json"             -d '{"returnSecureToken":true}'             "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=AIzaSyA-XkLCV2-NS7zyJwz3IGBuuJg8qCcpv_0")
+          export RESP
+          python3 - <<'PY'
+          import json, os
+          data=json.loads(os.environ["RESP"])
+          if "idToken" in data:
+              print("ANON_AUTH_OK")
+          else:
+              print("ANON_AUTH_FAILED:", data.get("error",{}).get("message","unknown"))
+          PY
 
       - uses: actions/setup-java@v6
         with:
