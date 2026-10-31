@@ -18,9 +18,11 @@ public class GasMonitorService extends Service {
     private static final String LIVE_PATH = "households/home/devices/arduino-uno-usb/latest";
 
     private static final String SERVICE_CHANNEL = "gas_monitor_service";
+    private static final String WARNING_CHANNEL = "gas_warning_alerts";
     private static final String ALERT_CHANNEL = "gas_alerts";
     private static final int SERVICE_ID = 20;
     private static final int ALERT_ID = 21;
+    private static final int WARNING_ALERT_ID = 22;
 
     private DatabaseReference currentRef;
     private ValueEventListener listener;
@@ -59,6 +61,9 @@ public class GasMonitorService extends Service {
                     if (raw < 0) raw = parseLong(snapshot.child("rawValue").getValue(), -1);
 
                     String status = classify(raw);
+                    if ("WARNING".equals(status) && !"WARNING".equals(lastStatus)) {
+                        postWarningNotification(GasMonitorService.this, (int)raw);
+                    }
                     if ("DANGER".equals(status) && !"DANGER".equals(lastStatus)) {
                         postDangerNotification(GasMonitorService.this, (int)raw);
                     }
@@ -94,6 +99,31 @@ public class GasMonitorService extends Service {
         if (obj instanceof Number) return ((Number)obj).longValue();
         try { return Long.parseLong(String.valueOf(obj).trim()); }
         catch (Exception e) { return fallback; }
+    }
+
+    public static void postWarningNotification(Context ctx, int raw) {
+        createChannels(ctx);
+        Intent open = new Intent(ctx, MainActivity.class);
+        open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pi = PendingIntent.getActivity(
+                ctx, 3, open,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        Notification.Builder b = new Notification.Builder(ctx, WARNING_CHANNEL)
+                .setSmallIcon(android.R.drawable.stat_notify_error)
+                .setContentTitle("WARNING: Elevated gas sensor reading")
+                .setContentText("Current ADC: " + raw + " (warning range 110–650).")
+                .setStyle(new Notification.BigTextStyle().bigText(
+                        "Warning threshold reached. Current ADC: " + raw +
+                        ". The buzzer remains OFF. Monitor the reading and check the area safely. " +
+                        "This is a raw ADC alert band, not a calibrated gas concentration."))
+                .setContentIntent(pi)
+                .setAutoCancel(true)
+                .setCategory(Notification.CATEGORY_STATUS)
+                .setPriority(Notification.PRIORITY_HIGH);
+
+        ((NotificationManager)ctx.getSystemService(NOTIFICATION_SERVICE))
+                .notify(WARNING_ALERT_ID, b.build());
     }
 
     public static void postDangerNotification(Context ctx, int raw) {
@@ -145,6 +175,15 @@ public class GasMonitorService extends Service {
                     NotificationManager.IMPORTANCE_LOW);
             monitor.setDescription("Keeps Smart Gas Firebase monitoring active");
             nm.createNotificationChannel(monitor);
+
+            NotificationChannel warning = new NotificationChannel(
+                    WARNING_CHANNEL, "Gas warning alerts",
+                    NotificationManager.IMPORTANCE_HIGH);
+            warning.setDescription("Alerts when ADC enters the warning range 110–650");
+            warning.enableVibration(true);
+            warning.enableLights(true);
+            warning.setLightColor(Color.YELLOW);
+            nm.createNotificationChannel(warning);
 
             NotificationChannel alert = new NotificationChannel(
                     ALERT_CHANNEL, "Gas danger alerts",
