@@ -1,0 +1,45 @@
+name: Build SmartGas Android APK
+
+on:
+  push:
+    branches:
+      - smartgas-apk-build-20261031
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check dashboard live Firebase node
+        run: |
+          echo "=== Dashboard live device node ==="
+          curl -sS -w "\nHTTP_CODE:%{http_code}\n"             "https://gaslpg-54c74-default-rtdb.firebaseio.com/households/home/devices/arduino-uno-usb/latest.json"
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build debug APK
+        working-directory: smartgas_android_apk
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Prepare installer
+        run: cp smartgas_android_apk/app/build/outputs/apk/debug/app-debug.apk SmartGasMonitor_v1.4.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SmartGasMonitor-v1.4-APK
+          path: SmartGasMonitor_v1.4.apk
+          if-no-files-found: error

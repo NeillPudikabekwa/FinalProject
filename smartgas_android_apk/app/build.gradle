@@ -1,0 +1,21 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'za.ac.tut.smartgasalert'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "za.ac.tut.smartgasalert"
+        minSdk 26
+        targetSdk 35
+        versionCode 6
+        versionName "1.5"
+    }
+}
+
+dependencies {
+    implementation platform('com.google.firebase:firebase-bom:35.1.0')
+    implementation 'com.google.firebase:firebase-database'
+}
