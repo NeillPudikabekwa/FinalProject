@@ -15,6 +15,7 @@ public class GasMonitorService extends Service {
     private static final String APP_ID = "1:859259164362:android:3011bb9ff108a446f44633";
     private static final String API_KEY = "AIzaSyA-XkLCV2-NS7zyJwz3IGBuuJg8qCcpv_0";
     private static final String SENDER_ID = "859259164362";
+    private static final String LIVE_PATH = "households/home/devices/arduino-uno-usb/latest";
 
     private static final String SERVICE_CHANNEL = "gas_monitor_service";
     private static final String ALERT_CHANNEL = "gas_alerts";
@@ -49,7 +50,7 @@ public class GasMonitorService extends Service {
             }
 
             currentRef = FirebaseDatabase.getInstance(app)
-                    .getReference("latest");
+                    .getReference(LIVE_PATH);
 
             listener = new ValueEventListener() {
                 @Override public void onDataChange(DataSnapshot snapshot) {
