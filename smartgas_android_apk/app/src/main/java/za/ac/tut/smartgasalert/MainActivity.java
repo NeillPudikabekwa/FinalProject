@@ -48,7 +48,7 @@ public class MainActivity extends Activity {
         scroll.addView(root);
 
         root.addView(text("Smart Gas Monitor", 28, true, Color.rgb(11,31,51)));
-        TextView sub = text("Live Firebase • MQ-5 gas monitoring", 14, false, Color.rgb(85,104,125));
+        TextView sub = text("Live Firebase • ADC gas monitoring", 14, false, Color.rgb(85,104,125));
         sub.setPadding(0, dp(4), 0, dp(16));
         root.addView(sub);
 
@@ -88,8 +88,8 @@ public class MainActivity extends Activity {
 
         LinearLayout info = section();
         info.addView(text("DEVICE INFORMATION", 14, true, Color.rgb(95,117,140)));
-        sensorView = text("Sensor: MQ-5", 17, false, Color.rgb(11,31,51));
-        deviceView = text("Device: prototype-01", 17, false, Color.rgb(11,31,51));
+        sensorView = text("Sensor: --", 17, false, Color.rgb(11,31,51));
+        deviceView = text("Device: --", 17, false, Color.rgb(11,31,51));
         updateView = text("Last update: --", 15, false, Color.rgb(60,80,102));
         sensorView.setPadding(0, dp(12), 0, dp(7));
         deviceView.setPadding(0, 0, 0, dp(7));
@@ -139,13 +139,13 @@ public class MainActivity extends Activity {
             if (app == null) throw new IllegalStateException("Firebase initialization returned null");
 
             FirebaseDatabase database = FirebaseDatabase.getInstance(app);
-            currentRef = database.getReference("gasMonitor").child("current");
+            currentRef = database.getReference("latest");
 
             currentRef.addValueEventListener(new ValueEventListener() {
                 @Override public void onDataChange(DataSnapshot snapshot) {
                     if (!snapshot.exists()) {
                         showConnectionMessage("FIREBASE CONNECTED • NO CURRENT DATA", Color.rgb(214,157,0));
-                        debugView.setText("Connected successfully, but /gasMonitor/current is empty.");
+                        debugView.setText("Connected successfully, but /latest is empty.");
                         return;
                     }
                     applySnapshot(snapshot, "LIVE FIREBASE");
@@ -184,7 +184,7 @@ public class MainActivity extends Activity {
                     if (snapshot.exists()) applySnapshot(snapshot, "LIVE FIREBASE • REFRESHED");
                     else {
                         showConnectionMessage("FIREBASE CONNECTED • NO CURRENT DATA", Color.rgb(214,157,0));
-                        debugView.setText("No data exists at /gasMonitor/current.");
+                        debugView.setText("No data exists at /latest.");
                     }
                 })
                 .addOnFailureListener(e -> {
@@ -194,20 +194,21 @@ public class MainActivity extends Activity {
     }
 
     private void applySnapshot(DataSnapshot snapshot, String sourceLabel) {
-        long raw = parseLong(snapshot.child("rawValue").getValue(), -1);
-        if (raw < 0) {
-            raw = parseLong(snapshot.child("adc").getValue(), -1);
-        }
-        if (raw < 0) {
-            raw = parseLong(snapshot.child("value").getValue(), -1);
-        }
+        long raw = parseLong(snapshot.child("adc_raw").getValue(), -1);
+        if (raw < 0) raw = parseLong(snapshot.child("value").getValue(), -1);
+        if (raw < 0) raw = parseLong(snapshot.child("rawValue").getValue(), -1);
 
-        String sensor = value(snapshot.child("sensor").getValue());
-        String device = value(snapshot.child("device").getValue());
-        long ts = parseLong(snapshot.child("timestamp").getValue(), System.currentTimeMillis());
+        String sensor = value(snapshot.child("sensor_model").getValue());
+        if (sensor.isEmpty()) sensor = value(snapshot.child("sensor").getValue());
 
-        if (sensor.isEmpty()) sensor = "MQ-5";
-        if (device.isEmpty()) device = "prototype-01";
+        String device = value(snapshot.child("device_id").getValue());
+        if (device.isEmpty()) device = value(snapshot.child("device").getValue());
+
+        long ts = parseLong(snapshot.child("timestamp_ms").getValue(), -1);
+        if (ts < 0) ts = parseLong(snapshot.child("timestamp").getValue(), System.currentTimeMillis());
+
+        if (sensor.isEmpty()) sensor = "Unknown";
+        if (device.isEmpty()) device = "Unknown";
         if (ts > 0 && ts < 100000000000L) ts *= 1000L;
 
         String status = classify(raw);
