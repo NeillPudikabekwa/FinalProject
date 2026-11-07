@@ -3,6 +3,8 @@ name: Smart Gas Android APK Build v2.1 Firebase Live
 on:
   push:
     branches: [ smartgas-apk-build-20261107 ]
+  pull_request:
+    branches: [ main ]
 
 permissions:
   contents: read
