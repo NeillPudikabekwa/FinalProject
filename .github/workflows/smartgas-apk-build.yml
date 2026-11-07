@@ -1,0 +1,61 @@
+name: Smart Gas Android APK Build
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ smartgas-apk-build-20261107 ]
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout build branch
+        uses: actions/checkout@v4
+
+      - name: Reconstruct Android project ZIP
+        shell: bash
+        run: |
+          cat smartgas-build/chunk01.b64               smartgas-build/chunk02.b64               smartgas-build/chunk03.b64               smartgas-build/chunk04.b64               smartgas-build/chunk05.b64               smartgas-build/chunk06.b64 > /tmp/smartgas.b64
+          base64 --decode /tmp/smartgas.b64 > /tmp/SmartGasAlert_Android_v2_Mega.zip
+          unzip -t /tmp/SmartGasAlert_Android_v2_Mega.zip
+          mkdir -p android-app
+          unzip -q /tmp/SmartGasAlert_Android_v2_Mega.zip -d android-app
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android API 36
+        shell: bash
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.6
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Build debug APK
+        working-directory: android-app
+        run: gradle --no-daemon :app:assembleDebug --stacktrace
+
+      - name: Rename installer
+        shell: bash
+        run: |
+          cp android-app/app/build/outputs/apk/debug/app-debug.apk SmartGasAlert_v2_Mega.apk
+          ls -lh SmartGasAlert_v2_Mega.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartGasAlert-v2-Mega-APK
+          path: SmartGasAlert_v2_Mega.apk
+          if-no-files-found: error
