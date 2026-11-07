@@ -1,0 +1,59 @@
+name: Smart Gas Android APK Build v2.1 Firebase Live
+
+on:
+  push:
+    branches: [ smartgas-apk-build-20261107 ]
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout build branch
+        uses: actions/checkout@v4
+
+      - name: Reconstruct Firebase Live Android project
+        shell: bash
+        run: |
+          cat smartgas-build/v21_chunk_00.b64               smartgas-build/v21_chunk_01.b64               smartgas-build/v21_chunk_02.b64               smartgas-build/v21_chunk_03.b64               smartgas-build/v21_chunk_04.b64 > /tmp/smartgas-v21.b64
+          base64 --decode /tmp/smartgas-v21.b64 > /tmp/SmartGasAlert_Android_v2_1_FirebaseLive_Source.zip
+          unzip -t /tmp/SmartGasAlert_Android_v2_1_FirebaseLive_Source.zip
+          mkdir -p android-app
+          unzip -q /tmp/SmartGasAlert_Android_v2_1_FirebaseLive_Source.zip -d android-app
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android API 36
+        shell: bash
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.6
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Build Firebase Live APK
+        working-directory: android-app
+        run: gradle --no-daemon :app:assembleDebug --stacktrace
+
+      - name: Rename installer
+        shell: bash
+        run: |
+          cp android-app/app/build/outputs/apk/debug/app-debug.apk SmartGasAlert_v2_1_FirebaseLive.apk
+          ls -lh SmartGasAlert_v2_1_FirebaseLive.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartGasAlert-v2.1-FirebaseLive-APK
+          path: SmartGasAlert_v2_1_FirebaseLive.apk
+          if-no-files-found: error
